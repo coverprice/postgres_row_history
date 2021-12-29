@@ -54,6 +54,8 @@ These can be inspected or used to reconstruct the state of the row at any given 
 - Changes are stored in JSONB format, so this cannot handle data types that can't be represented in JSONB.
 - It's still possible for there to be race conditions when using TRUNCATE because in Postgres a TRUNCATE is "seen"
   outside its transaction.
+- Primary keys are expected to be immutable, so updates to primary key values are **not logged**. E.g. if you
+  `UPDATE foo SET id=2 WHERE id=1`, this will not log the old/new values.
 
 
 ## Install & Usage
@@ -255,32 +257,48 @@ The above algorithm can be applied in the same way, except that:
 
 ## FAQ
 
-**Q**: Do updates _need_ to be within a transaction?
+#### Do updates _need_ to be within a transaction?
 
-**A**: No, you could rework the code to use a SESSION variable instead. However this opens the door for application bugs
-     that inadvertantly modify the logged tables; a SESSION variable means any changes will be logged against the
-     last `changelog` to be configured using `changelog_new()`, even if those changes have nothing to do with that
-     `changelog` entry.
+No, you could rework the code to use a SESSION variable instead. However this opens the door for application bugs
+that inadvertantly modify the logged tables; a SESSION variable means any changes will be logged against the
+last `changelog` to be configured using `changelog_new()`, even if those changes have nothing to do with that
+`changelog` entry.
 
-**Q**: When updating, do you need to store both the NEW and OLD values? Why not just store the OLD values?
+#### Is it necessary to store both OLD & NEW values for UPDATEs?
 
-**A**: Storing NEW values is a trade-off between storage space & convenience.
-
-Whether you store NEW & OLD, or just OLD, simply looking at a single `changelog_row_history` entry will not give you
-the entire state of a row at a given time... you will always need a simple program for that (see above).
+Technically it's not necessary to store NEW values when logging an UPDATE. This is a trade-off between storage space
+& convenience. The supplied implementation falls on the side of convenience.
 
 If storing the OLD & NEW deltas:
-- _Pro_: inspecting the 2 OLD/NEW rows is enough to see what changed. There's no need to look at additional rows.
-  This is more human friendly. No program is needed, just SELECT on the DB.
-- _Con_: takes up more space, since storing OLD & NEW is slightly redundant.
+- _Pro_: inspecting the OLD/NEW row by itself is enough to see what changed. There's no need to look at additional rows.
+  This is more human-friendly. No program is needed to reconstruct row state.
+- _Con_: the records take up more space.
 
-If storing only OLD & NEW deltas:
+If storing only OLD deltas:
 - _Pro_: Saves more space
 - _Con_: Can't look at a specific change and see what the new values are, you _must_ run the reconstruction algorithm
   to derive the state at a specific time.
 
-NB: If choosing concerns you, start with OLD & NEW. If space becomes a concern, you can switch to OLD-only by
+NB 1: Regardless of which you choose, simply looking at a single `changelog_row_history` entry will not give you
+the _entire_ state of a row at a given time... you will always need a simple algorithm for that (see above).
+
+NB 2: If the choice concerns you, start with OLD & NEW. If space becomes a concern, you can switch to OLD-only by
 updating the logging triggers to only record OLD values, and deleting all the NEW info.
+
+
+#### Are DDL changes (aka schema changes) logged?
+
+No, DDL changes made to the table are not recorded. DDL changes should be recorded elsewhere (perhaps manually) as
+they may significantly impact the "reconstruct table/row at a specific time" algorithm. It will need to take schema
+changes into account, especially column renames.
+
+
+#### Are primary key updates supported?
+
+No. Primary keys are expected to be immutable, so the algorithm special-cases them.
+
+With some minor changes, updates to primary keys could be supported; but updating primary keys at all seems like
+a code smell.
 
 
 ## Resources
