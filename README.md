@@ -205,37 +205,52 @@ The `change` field for the UPDATE:
 ```
 
 
-## Determining a row's state at a given point in time
+## Reconstructing state at a given point in time
 
-Sometimes it's useful to reconstruct the state of a row (or table) at a specific point in time. The `changelog` only
-contains row changes (deltas), so reconstruction is typically a matter of starting with the current known state,
-and applying changes in reverse until the desired time is reached.
+To reconstruct the state of a row or the entire table at a specific point in time _t_, use a simple algorithm:
+Starting from a known state, replay logged changes in order until you reach the desired time.
 
-To reconstruct a single row's state at time _t_.
+This can be done either forwards or backwards: Forwards starts from an empty table and apply changes forward in time,
+and backwards starts from a copy of the current table, and applies changes in reverse.  Which one is more efficient
+depends on whether the desired time _t_ is nearer the beginning or the end of the changelog.
 
-1) Set `row_state` to be the current row in the table. (NB: a `row_state` can be `NULL`, meaning it does not exist
-   at the current time.)
-2) Walk the set of changes applied to the row, sorted into reverse order. For each change:
+### Reconstructing the entire table at a specific time
 
-  2.1) if `changelog.change_time` < _t_ then return `row_state`.
-  2.2) Apply the inverse of the change to `row_state`. E.g.
+To reconstruct the table at a time _t_, the following pseudo-code starts with the current state and applies
+changes backwards in time.
 
-  * For an UPDATE, set each changed column to the old state. e.g. if 'foo->o' = 1 and 'foo->n' = 2, set `row_state.foo` to 1.
-  * For a DELETE, set `state` to the row state logged in the change.
-  * For an INSERT, set `row_state` to `NULL` ("does not exist").
+1) Copy the original table into a temporary table. (Tip: Use `SELECT INTO ...`)
 
-3) If there are no more change rows, return `row_state`.
-
-For step 2, it's necessary to retrieve the changes to a specific row, in reverse order.
-For example, to find all changes that affect table `MY_TABLE`, row with primary key `1234`, where the primary key
-column is `MY_ID`:
+2) Retrieve the changes in reverse order. Example code to retrieve all changes for table `MY_TABLE`:
 
     SELECT c.*, crh.*
     FROM changelog AS c
         JOIN changelog_row_history AS crh ON (c.id = crh.change_id)
     WHERE crh.table_name = 'MY_TABLE'
-      AND crh.change -> MY_ID = 1234
     ORDER BY c.time DESC, crh.id DESC;
+
+2.1) For each change row:
+
+2.2) If there are no more rows, or if `changelog.change_time` < _t_ then exit. The temporary table contains the
+  contents at time _t_.
+
+2.3) Based on `changelog_row_history.changetype`, do the following:
+
+  * `UPDATE`: apply the old values to the temp table. e.g. if the change record is for `id:123`, `foo->o` = 1,
+     and `foo->n` = 2, then run `UPDATE _temp_MY_TABLE SET foo = 1 WHERE id = 123`.
+  * `DELETE` or `TRUNCATE`: INSERT the row into the table using the information from the `change` column.
+  * `INSERT`: DELETE the row from the table using the information from the `change` column.
+
+2.4) Go to 2.1
+
+
+### Reconstructing a single row at a specific time
+
+To reconstruct a single row's state at time _t_, it's assumed in advance that you know the primary key ID of the row.
+The above algorithm can be applied in the same way, except that:
+
+* instead of maintaining a temporary table to apply changes to, just store a temporary row (in memory, say)
+* add a filter to the SQL that retrieves the changes to only return rows that apply to the row of interest.
 
 
 ## FAQ
