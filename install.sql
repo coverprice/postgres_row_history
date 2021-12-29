@@ -99,14 +99,13 @@ BEGIN
     -- record just the changed fields
     _new_row := to_jsonb(NEW);
     _old_row := to_jsonb(OLD) - v_ignore_cols - v_ignore_update_cols;   -- NB: this removes any columns we want to ignore
-    _to_insert := jsonb_build_object('old', '{}'::jsonb, 'new', '{}'::jsonb);
+    _to_insert := '{}'::jsonb;
 
     FOR _old_item IN
       SELECT key, value FROM jsonb_each(_old_row)
     LOOP
       IF _old_item.value IS DISTINCT FROM _new_row->_old_item.key THEN
-        _to_insert := jsonb_set(_to_insert, ARRAY['old', _old_item.key], _old_item.value);
-        _to_insert := jsonb_set(_to_insert, ARRAY['new', _old_item.key], _new_row->_old_item.key);
+        _to_insert := jsonb_set(_to_insert, ARRAY[_old_item.key], jsonb_build_object('o', _old_item.value, 'n', _new_row->_old_item.key), true);
         _changes_made := true;
       END IF;
     END LOOP;

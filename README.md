@@ -5,15 +5,21 @@
 Sample code for a PostgreSQL trigger that automatically logs a table's changes to a history table (aka audit table,
 changelog, etc).
 
-This is a solution for the class of problem known as [Change Data Capture](https://en.wikipedia.org/wiki/Change_data_capture).
+This is a solution for [Change Data Capture](https://en.wikipedia.org/wiki/Change_data_capture) class of problems.
+
+This tool logs all table changes, so it's possible to reconstruct the state of a row (or the entire table) at any given point
+in time. And changes are associated with a git-like "commit message" that details who made the change and gives a
+summary of the set of changes.
 
 
 ## What problem does it solve?
 
-We were storing data in YAML files, stored in Github repos which was reliable, durable, and each
-data point had a changelog that specified Who/What/When. But changes were hard to automate, and YAML was a poor
-substitute for an RDBMS. Moving the data to an RDBMS was obviously the correct choice, but we didn't
-want to lose that git changelog. This set of tools solves that.
+Use it in situations where you want to know who changed a row/column, when they changed it, what the changes were,
+and why it was changed. (This is like inspecting a `git log` of commits, or a `git blame`).
+
+Our use case was to log Access Control changes. Our previous solution was to format this data in YAML files and store
+it in a Git repo, which gave us a powerful changelog but made data manipulation difficult. This tool adds that powerful
+changelog ability to the RDBMS.
 
 
 ## How is it used?
@@ -27,15 +33,17 @@ want to lose that git changelog. This set of tools solves that.
 4) Modify your configured tables with INSERT, UPDATE, DELETE, TRUNCATE.
 5) Commit the transaction.
 
-At the end, there will be 1 new row in the `changelog` table providing metadata about the change (c.f. a git log
-entry), and 1-many rows associated with it in the `changelog_row_history` table that detail the delta values that were
+This results in 1 new row in the `changelog` table providing metadata about the change (c.f. a git log entry), and
+1-many rows associated with it in the `changelog_row_history` table that detail the delta values that were
 INSERT'ed, UPDATE'd, DELETE'd, or TRUNCATE'd.
+
+These can be inspected or used to reconstruct the state of the row at any given point in time. (See below for more info)
 
 
 ## Design considerations
 
-- Fails if changes are attempted outside a transaction. This prevents poorly-written app-code from accidentally
-  modifying a logged table without first setting up a changelog.
+- Fails with an excpetion if changes are attempted outside a transaction. This prevents poorly-written app-code from
+  accidentally modifying a logged table without first setting up a changelog.
 - Triggers functions are generic, and any table-specific options are passed in as parameters. No need for customized
   trigger functions for each logged tables.
 - Should support ignoring certain columns, that the user may not want to log because they're too noisy, large,
@@ -102,8 +110,8 @@ PostgreSQL trigger function params must be strings, so the required format is a 
 ARRAY of strings (type `text[]`). Examples:
 
 - `'{}'` : Empty list
-- `'{"foo"}'` : 1 entry
-- `'{"foo","bar","baz"}'` : multiple entries
+- `'{"foo"}'` : 1 list element
+- `'{"foo","bar","baz"}'` : multiple list elements
 
 
 ### Logging a change
@@ -150,7 +158,7 @@ The `changelog_row_history` table has a list of changes, linked to exactly 1 `ch
 - `change_id`: Foreign key of the `changelog.change_id` setup in the previous step.
 - `changetype`: the operation type, one of `INSERT`, `DELETE`, `UPDATE`, or `TRUNCATE`.
 - `table_name`: the name of the modified table.
-- `change`: JSONB summary of the changes.
+- `change`: JSONB summary of the changes (see below for details).
 
 **Important**: `changelog_row_history` entries all share a timestamp (in `changelog`), so when reconstructing the
 state of a row, it is necessary to order events within a change using the `changelog_row_history.id` column.
@@ -160,38 +168,11 @@ is ostensibly useful here actually returns the same value for the duration of th
 useless for ordering events within a transaction.
 
 
-### `change` column format
+### `change` format
 
-The `change` column's format depends on the type of change.
+The `change` column's JSONB format depends on the type of change.
 
-An UPDATE contains the primary key value(s), and *only* changed columns. E.g.
-
-```
-INSERT INTO my_table (some_id, foo, bar) VALUES (1111, 1, 2);
-
-[some time later]
-BEGIN;
-SELECT changelog_new('Some description', 'some_user_id');  -- Configure change
-UPDATE my_table SET foo=9, bar=10 WHERE some_id=1111;
-COMMIT;
-```
-
-The `change` field for the UPDATE:
-```
-{
-    'some_id': 1111,          # Primary key. Always stored.
-    'old': {
-        'foo': 1,
-        'bar': 2,
-    },
-    'new': {
-        'foo': 9,
-        'bar': 10,
-    },
-}
-```
-
-An `INSERT`, `DELETE`, or `TRUNCATE` will store the whole row, e.g.
+For `INSERT`, `DELETE`, or `TRUNCATE` it is simply a JSONB column-name:value for all columns (except ignored ones).
 ```
 {
     'some_id': 1111,
@@ -199,6 +180,30 @@ An `INSERT`, `DELETE`, or `TRUNCATE` will store the whole row, e.g.
     'bar': 2,
 }
 ```
+
+For `UPDATE`, it contains the primary key value(s) and *only* changed columns. E.g.
+
+```
+INSERT INTO my_table (some_id, foo, bar) VALUES (1111, 1, 2);
+
+[some time later]
+BEGIN;
+SELECT changelog_new('Some description', 'some_user_id');  -- Configure change
+UPDATE my_table SET foo=9 WHERE some_id=1111;
+COMMIT;
+```
+
+The `change` field for the UPDATE:
+```
+{
+    'some_id': 1111,          # Primary key. Always stored.
+    'foo': {
+        'o': 1,               # 'o' means 'old value'
+        'n': 9,               # 'n' means 'new value'
+    },
+}
+```
+
 
 ## Determining a row's state at a given point in time
 
@@ -208,13 +213,17 @@ and applying changes in reverse until the desired time is reached.
 
 To reconstruct a single row's state at time _t_.
 
-1) Set `row_state` to be the current row in the table.
+1) Set `row_state` to be the current row in the table. (NB: a `row_state` can be `NULL`, meaning it does not exist
+   at the current time.)
 2) Walk the set of changes applied to the row, sorted into reverse order. For each change:
-   2.1) if `changelog.change_time` < _t_ then return `row_state`.
-   2.2) Apply the inverse of the change to `row_state`. E.g.
-        For an UPDATE, if 'foo->old' = 1 and 'foo->new' = 2, then set `row_state.foo` to 1.
-        For a DELETE, set `state` to the row state logged in the change.
-        For an INSERT, set `row_state` to `NULL` (means "did not exist").
+
+  2.1) if `changelog.change_time` < _t_ then return `row_state`.
+  2.2) Apply the inverse of the change to `row_state`. E.g.
+
+  * For an UPDATE, set each changed column to the old state. e.g. if 'foo->o' = 1 and 'foo->n' = 2, set `row_state.foo` to 1.
+  * For a DELETE, set `state` to the row state logged in the change.
+  * For an INSERT, set `row_state` to `NULL` ("does not exist").
+
 3) If there are no more change rows, return `row_state`.
 
 For step 2, it's necessary to retrieve the changes to a specific row, in reverse order.
@@ -226,7 +235,7 @@ column is `MY_ID`:
         JOIN changelog_row_history AS crh ON (c.id = crh.change_id)
     WHERE crh.table_name = 'MY_TABLE'
       AND crh.change -> MY_ID = 1234
-	ORDER BY c.time DESC, crh.id DESC;
+    ORDER BY c.time DESC, crh.id DESC;
 
 
 ## FAQ
