@@ -130,11 +130,8 @@ BEGIN
   END IF;
 
   IF _changes_made THEN
-    -- NB the MAX(id) here is not ideal since it's static but requires an index lookup. If this ends up being very slow,
-    -- consider using a Materialized View to store the MAX(id) in another table that only has 1 row.
     INSERT INTO changelog_row_history (change_id, changetype, table_name, change)
       VALUES (_change_id::int, TG_OP, TG_TABLE_NAME, _to_insert);
-
   END IF;
 
   RETURN NULL; -- Ignored
