@@ -11,17 +11,13 @@ See the `sample_usage.sql` file for examples of logging changes to this sample t
 DROP TABLE IF EXISTS test_data CASCADE;
 CREATE TABLE test_data (
   test_id SERIAL PRIMARY KEY
-  , aaa text
-  , bbb int
+  , text_col text
+  , int_col int
+  , float_col float
   , col_to_ignore_updates int
   , col_to_always_ignore int
+  , jsonb_col jsonb
 );
-INSERT INTO test_data (aaa, bbb, col_to_ignore_updates, col_to_always_ignore)
-   VALUES
-    ('xxx', 123, 999, 888)
-  , ('yyy', 456, 777, 666)
-  , ('zzz', 789, 111, 222)
-  ;
 
 
 /*

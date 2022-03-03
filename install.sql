@@ -31,8 +31,9 @@ CREATE TABLE changeset_row_history (
 Function: changeset_new()
 
 Purpose: Sets up the database state to record a new change.
-It just inserts the given data into the change table and sets the local setting that will be passed to the trigger if/when it is called.
-It assumes a transaction has already been started; it will emit a warning if not, and any changes will subsequently fail.
+It just inserts the given data into the change table and sets the local setting that will be passed to the trigger
+if/when it is called. It assumes a transaction has already been started; it will emit a warning if not, and any
+changes will subsequently fail.
 */
 CREATE OR REPLACE FUNCTION changeset_new
     ( description text
@@ -47,7 +48,7 @@ BEGIN
   VALUES(CURRENT_TIMESTAMP, description, user_id)
   RETURNING id INTO change_id;
 
-  PERFORM set_config('changesetger.change_id', change_id::text, true);   -- Last parameter is 'is_local'
+  PERFORM set_config('changeset.change_id', change_id::text, true);   -- Last parameter is 'is_local'
 
   RETURN change_id;
 END;
@@ -58,22 +59,26 @@ $$;
 Trigger that handles UPDATE and DELETE operations, a row-level trigger.
 
 Parameters:
-1) v_pkey_cols: string containing a literal text array of the table-to-log's primary key column name(s). e.g. in 'raw' format this might be
-     ARRAY['user_id'], or {'user_id'}, and when converted to a string (i.e. quoting & escaping single quotes) this would be '{"user_id"}'
-2) v_ignore_update_cols: string containing literal text array of any column names to ignore ONLY during UPDATEs, e.g. {'last_updated'}
-3) v_ignore_cols: string containing literal text array of any column names to NEVER log. e.g. {'huge_expensive_field_we_dont_need_to_log'}
+1) v_pkey_cols: string containing a literal text array of the table-to-log's primary key column name(s). e.g. in
+   'raw' format this might be ARRAY['user_id'], or {'user_id'}, and when converted to a string (i.e. quoting &
+   escaping single quotes) this would be '{"user_id"}'
+2) v_ignore_update_cols: string containing literal text array of any column names to ignore ONLY during
+   UPDATEs, e.g. {'last_updated'}
+3) v_ignore_cols: string containing literal text array of any column names to NEVER log.
+   e.g. {'huge_expensive_field_we_dont_need_to_log'}
 
-NB: We'd rather pass text arrays directly, but triggers only support passing string params, so we pass string literals and cast
-to ::text[] inside the trigger.
+NB: We'd rather pass text arrays directly, but triggers only support passing string params, so we pass string
+literals and cast to ::text[] inside the trigger.
 
-Note: You're more likely to use ignore_update_cols than ignore_cols. ignore_update_cols avoids logging updates to "noisy" columns
-that don't provide much value (from a logging POV) and may be redundant anyway, like 'last_updated'. However during
-DELETE/TRUNCATE (i.e. not UPDATE) you still want a copy of that info as part of a full table log, if you ever needed to restore
-the entire row, so these will still be logged on DELETE/TRUNCATE.
+Note: You're more likely to use ignore_update_cols than ignore_cols. ignore_update_cols avoids logging updates
+to "noisy" columns that don't provide much value (from a logging POV) and may be redundant anyway, like
+'last_updated'. However during DELETE/TRUNCATE (i.e. not UPDATE) you still want a copy of that info as part of a
+full table log, if you ever needed to restore the entire row, so these will still be logged on DELETE/TRUNCATE.
 
-ignore_cols is a list of columns to completely ignore regardless of the operation type, and is intended for columns
-that won't matter during a restore, or columns that can't be converted to JSONB (e.g. BLOBs), or can't be efficiently stored
-e.g. very large text fields that you don't care about. Since these are pretty rare, it's likely for this param to be empty.
+ignore_cols is a list of columns to completely ignore regardless of the operation type, and is intended for
+columns that won't matter during a restore, or columns that can't be converted to JSONB (e.g. BLOBs), or can't
+be efficiently stored, e.g. very large text fields that you don't care about. Since these are pretty rare, it's
+common for this param to be empty.
 
 */
 CREATE OR REPLACE FUNCTION changeset_update_delete_trigger() RETURNS trigger

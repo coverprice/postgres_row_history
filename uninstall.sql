@@ -9,10 +9,6 @@ for each installed trigger function (substituting the appropriate trigger & tabl
 
 DROP FUNCTION IF EXISTS changeset_truncate_trigger CASCADE;
 DROP FUNCTION IF EXISTS changeset_update_delete_trigger CASCADE;
-DROP FUNCTION IF EXISTS changeset_new
-    ( description text
-    , user_id text
-    ) RETURNS int
-  CASCADE;
+DROP FUNCTION IF EXISTS changeset_new(description text, user_id text) CASCADE;
 DROP TABLE IF EXISTS changeset_row_history CASCADE;
 DROP TABLE IF EXISTS changeset CASCADE;
