@@ -39,10 +39,10 @@ class Migration(migrations.Migration):
 from django.db import migrations
 
 INSTALL_LOGGER_SQL = """
-	<in this string, copy the contents of install.sql verbatim>
+    <in this string, copy the contents of install.sql verbatim>
 """
 UNINSTALL_LOGGER_SQL = """
-	<in this string, copy the contents of uninstall.sql verbatim>
+    <in this string, copy the contents of uninstall.sql verbatim>
 """
 
 
@@ -136,8 +136,8 @@ To modify the application to use the logger, ensure:
 **Before**:
 ```python
 def update_product_name(product: ProductModel, new_name: str) -> None:
-	model.name = new_name
-	model.save()
+    model.name = new_name
+    model.save()
 ```
 
 
@@ -146,11 +146,11 @@ def update_product_name(product: ProductModel, new_name: str) -> None:
 from django.db import transaction, connection
 
 def update_product_name(user_name: str, product: ProductModel, new_name: str) -> None:
-	with transaction.atomic():
-		with connection.cursor() as cursor:
-			cursor.callproc('changeset_new', [f"Updating name of {product.id}", user_name])
-		model.name = new_name
-		model.save()
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.callproc('changeset_new', [f"Updating name of {product.id}", user_name])
+        model.name = new_name
+        model.save()
 ```
 
 Notes:
