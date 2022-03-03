@@ -309,6 +309,11 @@ With some minor changes, updates to primary keys could be supported; but updatin
 a code smell.
 
 
+#### How do I use this with Django?
+
+There is no Django-specific support, but [sample instructions](Django.md) are provided.
+
+
 ## Resources
 
 * see https://www.postgresql.org/docs/13/plpgsql-trigger.html
