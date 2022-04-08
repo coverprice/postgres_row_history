@@ -73,10 +73,10 @@ UNINSTALL_LOGGER_SQL = Path(__file__).parent.joinpath('path/to/uninstall.sql').r
 
 #### Configuring
 
-This section shows how to configure the logger on a specific table. In this example
-the table `test_data` is used. The column `test_id` is always included in the changelog,
-`col_to_ignore_updates` is ignored during `UPDATE`s, and `col_to_always_ignore` is
-never logged.
+This section shows how to configure the logger on a specific table. This example uses
+the "delta" approach on the the table `test_data`. The column `test_id` is always included in
+the changelog, `col_to_ignore_updates` is ignored during `UPDATE`s, and `col_to_always_ignore`
+is never logged.
 
 1. Create an empty migration.
 
@@ -85,37 +85,20 @@ never logged.
 2. Edit the generated code to add the installation SQL.
 
 ```python
-INSTALL_ON_TABLE_SQL="""
-CREATE TRIGGER test_update_delete_trg
-  AFTER INSERT OR UPDATE OR DELETE
-  ON test_data
-  FOR EACH ROW EXECUTE PROCEDURE changeset_update_delete_trigger(
-    '{"test_id"}'                   -- primary key IDs (always logged)
-    , '{"col_to_ignore_updates"}'   -- ignore these only when updating
-    , '{"col_to_always_ignore"}'    -- ignore these always
-  )
-;
-
-CREATE TRIGGER test_truncate_trg
-  BEFORE TRUNCATE
-  ON test_data
-  FOR EACH STATEMENT EXECUTE PROCEDURE changeset_truncate_trigger(
-    , '{"col_to_always_ignore"}'    -- ignore these always
-  )
-;
-"""
-
-UNINSTALL_ON_TABLE_SQL="""
-DROP TRIGGER test_truncate_trg ON test_data CASCADE;
-DROP TRIGGER test_update_delete_trg ON test_data CASCADE;
-"""
-```
-
-Lower down, add a `RunSQL` definition:
-
-```python
     operations = [
-        migrations.RunSQL(sql=INSTALL_ON_TABLE_SQL, reverse_sql=UNINSTALL_ON_TABLE_SQL),
+        migrations.RunSQL(
+            sql="""
+				SELECT enable_changeset_tracking_delta
+					( 'test_data'::regclass         -- table to enable
+					, '{"test_id"}'                 -- primary key IDs (always logged)
+					, '{"col_to_ignore_updates"}'   -- ignore these only when updating
+					, '{"col_to_always_ignore"}'    -- ignore these always
+				  )
+            """,
+            reverse_sql="""
+                SELECT disable_changeset_tracking_delta('test_data'::regclass)
+            """,
+        ),
     ]
 ```
 
@@ -148,6 +131,7 @@ from django.db import transaction, connection
 def update_product_name(user_name: str, product: ProductModel, new_name: str) -> None:
     with transaction.atomic():
         with connection.cursor() as cursor:
+            # Create the metadata about this change's who / when / what
             cursor.callproc('changeset_new', [f"Updating name of {product.id}", user_name])
         model.name = new_name
         model.save()
