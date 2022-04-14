@@ -111,6 +111,9 @@ BEGIN
     -- record both old/new rows
     _new_record := to_jsonb(NEW) - v_ignore_cols - v_ignore_update_cols;   -- NB: this removes any columns we want to ignore
     _old_record := to_jsonb(OLD) - v_ignore_cols - v_ignore_update_cols;
+    IF _new_record = _old_record THEN  -- If only ignored columns are updated then there's nothing to log
+      RETURN NULL;
+    END IF;
 
   ELSIF TG_OP = 'INSERT' THEN
     -- record a copy of the new row
