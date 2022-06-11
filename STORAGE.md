@@ -45,7 +45,11 @@ INSERT INTO my_table (some_id, foo, bar, wiz) VALUES (1111, 1, 'hello', 2);
 
 [some time later]
 BEGIN;
-SELECT changeset_new('Some description', 'some_user_id');  -- Configure change
+SELECT changeset_new(
+    'Some operation'                            -- operation
+    , '{"some_param":"some value"}'::jsonb      -- operation params
+    , 'some_user_id'                            -- user responsible for operation
+);
 UPDATE my_table SET foo=9, bar="world" WHERE some_id=1111;
 COMMIT;
 ```

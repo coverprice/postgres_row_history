@@ -50,19 +50,23 @@ files for worked examples.
 
 1) In your app, begin a transaction.
 
-2) Call `changeset_new(<description>, <user id>)`. This will insert a new `changeset` row with the description,
-   user ID, and the current time. It will also configure a local session var so that subsequent changes to the
-   configured tables will be associated with this new changeset row.
+2) Call `changeset_new(<operation summary>, <params>, <user id>)`. This will insert a new `changeset` row that contains:
 
-- **description**: a 1-line human-readable summary of the changes (same as a git commit message).
-- **user ID**: an arbitrary string describing the user who is making these changes. It's recommended to use
-  a unique and immutable user identifier. (The code could easily modify the `changeset.user_id` column to be a
-  foreign key of some `users` table, if available. But beware: the changeset represents history and should be treated
-  as an immutable log, so don't link it to a `users` table if those users may be deleted.)
+   - a human readable summary of the changeset (ex. "Granting user access")
+   - a JSONB set of relevant dynamic attributes about the changeset (ex. `"for_user": "jsmith", "account_id": 1234, "support_ticket: 93747`)
+   - The user ID of the person/bot responsible for the change.
+   - the current time
+
+It will also configure a local session var so that subsequent changes to the configured tables will be associated with this
+new changeset row.
 
 Example:
 ```
-SELECT changeset_new('Ticket #12345: Add John Smith to the Administrators group', 'alice.simpson');
+SELECT changeset_new(
+	'Grant administrator access',							-- Change summary
+	, '{"ticket": "1234", "for_user": "jsmith"}'::jsonb		-- Dynamic vars about the change
+	, 'alice.simpson'										-- Person responsible for this change
+);
 ```
 
 3) Proceed with your changes. Call `INSERT`, `DELETE`, `UPDATE` and/or `TRUNCATE` operations that involve the configured

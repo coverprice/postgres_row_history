@@ -15,7 +15,7 @@ DROP FUNCTION IF EXISTS changeset_truncate_trigger_delta CASCADE;
 DROP FUNCTION IF EXISTS changeset_truncate_trigger_snapshot CASCADE;
 DROP FUNCTION IF EXISTS changeset_update_delete_trigger_delta CASCADE;
 DROP FUNCTION IF EXISTS changeset_update_delete_trigger_snapshot CASCADE;
-DROP FUNCTION IF EXISTS changeset_new(description text, user_id text) CASCADE;
+DROP FUNCTION IF EXISTS changeset_new(operation text, params jsonb, user_id text) CASCADE;
 DROP FUNCTION IF EXISTS enable_changeset_tracking_snapshot(regclass, text, text) CASCADE;
 DROP FUNCTION IF EXISTS disable_changeset_tracking_snapshot(regclass) CASCADE;
 DROP FUNCTION IF EXISTS enable_changeset_tracking_delta(regclass, text, text, text) CASCADE;

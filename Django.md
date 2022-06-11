@@ -127,18 +127,22 @@ def update_product_name(product: ProductModel, new_name: str) -> None:
 **After**:
 ```python
 from django.db import transaction, connection
+import json
 
-def update_product_name(user_name: str, product: ProductModel, new_name: str) -> None:
+def update_product_name(updater_user_name: str, product: ProductModel, new_name: str) -> None:
     with transaction.atomic():
         with connection.cursor() as cursor:
             # Create the metadata about this change's who / when / what
-            cursor.callproc('changeset_new', [f"Updating name of {product.id}", user_name])
+            params = {
+               "product_id": product.id,
+            }
+            cursor.callproc('changeset_new', [f"Updating product", json.dumps(params), updater_user_name])
         model.name = new_name
         model.save()
 ```
 
 Notes:
-- The new method takes a new `user_name` parameter, so that the `changeset_new()` can record
+- The new method takes a new `updater_user_name` parameter, so that the `changeset_new()` can record
   who is making this change.
 - `@transaction.atomic` can also be used as a function decorator.
 - See: https://docs.djangoproject.com/en/4.0/topics/db/transactions/
