@@ -42,5 +42,5 @@ SELECT enable_changeset_tracking_snapshot
 -- Display the logged changes so we can manually verify the output.
 SELECT c.*, crh.id, crh.changetype, crh.table_name, crh.record, crh.old_record
 FROM changeset as c
-  LEFT JOIN changeset_row_history_snapshot AS crh ON (c.id = crh.change_id)
+  LEFT JOIN changeset_row_history_snapshot AS crh ON (c.id = crh.changeset_id)
 ORDER BY c.time, crh.id;

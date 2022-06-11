@@ -12,7 +12,7 @@ was made, and an application-provided summary of What was changed.
 For the `changeset_row_history_{snapshot,delta}` table, both "snapshot" and "delta" approaches share the following
 metadata fields, used to describe a single change within the changeset:
 - `id`: Unique ID on this table. Monotonically increasing, so can be used to order row changes within a change.
-- `change_id`: Foreign key of the `changeset.change_id` setup in the previous step.
+- `changeset_id`: Foreign key of the `changeset.changeset_id` setup in the previous step.
 - `changetype`: the operation type, one of `INSERT`, `DELETE`, `UPDATE`, or `TRUNCATE`.
 - `table_name`: the name of the modified table.
 

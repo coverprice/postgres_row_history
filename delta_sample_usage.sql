@@ -43,5 +43,5 @@ SELECT enable_changeset_tracking_delta
 -- Display the logged changes so we can manually verify the output.
 SELECT c.*, crh.id, crh.changetype, crh.table_name, crh.change
 FROM changeset as c
-  LEFT JOIN changeset_row_history_delta AS crh ON (c.id = crh.change_id)
+  LEFT JOIN changeset_row_history_delta AS crh ON (c.id = crh.changeset_id)
 ORDER BY c.time, crh.id;
