@@ -105,10 +105,6 @@ DECLARE
   _old_record jsonb;
   _changeset_id text := current_setting('changeset.changeset_id', true);    -- 2nd param means no exception thrown if not set, it just returns empty string.
 BEGIN
-  IF _changeset_id !~ '^\d+$' THEN
-    RAISE EXCEPTION 'changeset_update_delete_trigger_snapshot called but changeset.changeset_id setting is not an integer.';
-  END IF;
-
   IF TG_OP = 'UPDATE' THEN
     -- record both old/new rows
     _new_record := to_jsonb(NEW) - v_ignore_cols - v_ignore_update_cols;   -- NB: this removes any columns we want to ignore
@@ -125,6 +121,16 @@ BEGIN
     -- record a copy of the deleted row
     _old_record := to_jsonb(OLD) - v_ignore_cols;
 
+  END IF;
+
+  /*
+  NB: Only check if a changeset has been configured just before we write. This is so that UPDATEs that *only*
+  modify ignored columns do not have to set up a changeset. If no other operations are performed in the transaction,
+  then this lets the app avoid unnecessarily creating a `changeset` record (which would exist with no
+  `changeset_row_history_snapshot` records).
+  */
+  IF _changeset_id !~ '^\d+$' THEN
+    RAISE EXCEPTION 'changeset_update_delete_trigger_snapshot called but changeset.changeset_id setting is not an integer.';
   END IF;
 
   INSERT INTO changeset_row_history_snapshot
