@@ -8,6 +8,7 @@ Installs the components necessary for logging either snapshots of row changes, o
 - `changeset_row_history_delta` table: when using the "delta" approach, stores just the modified fields about a
   specific row change, belonging to a single `changeset` entry.
 - `changeset_new` function: a convenience method for setting up a new changeset.
+- `changeset_reset` function: a convenience method for updating the last changeset created with `changeset_new`.
 - `changeset_update_delete_trigger_{snapshot,delta}` & `changeset_truncate_trigger_{snapshot,delta}` functions: the
   2 triggers each for snapshot/delta approaches that insert the changes into `changeset_row_history_{snapshot,delta}`
   respectively.
@@ -51,22 +52,56 @@ if/when it is called. It assumes a transaction has already been started; it will
 changes will subsequently fail.
 */
 CREATE OR REPLACE FUNCTION changeset_new
-    ( operation text
-    , params jsonb
-    , user_id text
+    ( v_operation text
+    , v_params jsonb
+    , v_user_id text
     ) RETURNS int
   LANGUAGE plpgsql
 AS $$
 DECLARE
-  changeset_id changeset.id%TYPE;
+  v_changeset_id changeset.id%TYPE;
 BEGIN
   INSERT INTO changeset(time, operation, params, user_id)
-  VALUES(CURRENT_TIMESTAMP, operation, params, user_id)
-  RETURNING id INTO changeset_id;
+  VALUES(CURRENT_TIMESTAMP, v_operation, v_params, v_user_id)
+  RETURNING id INTO v_changeset_id;
 
-  PERFORM set_config('changeset.changeset_id', changeset_id::text, true);   -- Last parameter is 'is_local'
+  PERFORM set_config('changeset.changeset_id', v_changeset_id::text, true);   -- Last parameter is 'is_local'
 
-  RETURN changeset_id;
+  RETURN v_changeset_id;
+END;
+$$;
+
+
+/*
+Function: changeset_reset()
+
+Purpose: Resets the operation & params for the last changeset created with `changeset_new`.
+
+This is often useful when the app has difficulty knowing which operation/params to store at the beginning of
+the transaction (which is when `changeset_new` must be called), but does know the appropriate values at the end.
+For example, if the app wanted to record the total number of changes in the changeset summary, it can set a dummy
+value during `changeset_new`, calculate the running total during the update, and then call `changeset_reset` at
+the end to replace the placeholder with the final value.
+
+Note: that updating the user_id is not supported; in practice, the app never wants to update this value, so it's
+ommitted.
+*/
+CREATE OR REPLACE FUNCTION changeset_reset
+    ( v_operation text
+    , v_params jsonb
+    ) RETURNS VOID
+  LANGUAGE plpgsql
+AS $$
+DECLARE
+  _changeset_id text := current_setting('changeset.changeset_id', true);    -- 2nd param means no exception thrown if not set, it just returns empty string.
+BEGIN
+  IF _changeset_id !~ '^\d+$' THEN
+    RAISE EXCEPTION 'changeset_reset called but changeset.changeset_id setting is not an integer. changeset_new was not called prior to this?';
+  END IF;
+
+  UPDATE changeset
+  SET operation=v_operation, params=v_params
+  WHERE id = _changeset_id::bigint;
 END;
 $$;
 
